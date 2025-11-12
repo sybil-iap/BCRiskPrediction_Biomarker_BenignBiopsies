@@ -1,0 +1,728 @@
+---
+title: "Process DEGs"
+author: "Siyang Shen"
+date: "2025-09-25"
+output: html_document
+---
+This scripts perform Differential gene expression analysis 
+```{r message=FALSE, warning=FALSE}
+# rm(list = ls())
+
+library(data.table)
+library(DESeq2)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+options(stringsAsFactors=FALSE)
+set.seed(2025)
+
+here::here()
+```
+
+# Load phenotype, log2 TPM, Raw read counts from Batch 1 and Batch 2
+```{r}
+b1_log2TPM <- as.data.frame(fread(here::here("data","ProcessedRNA","Batch1RNA_log2TPMReads.csv"), check.names = FALSE))
+b1_rawreads <- as.data.frame(fread(here::here("data","ProcessedRNA","Batch1RNA_RawReadCounts_TPMFiltered.csv"), check.names = FALSE))
+phenotype_b1 <- read.delim(here::here("data","ProcessedPhenotype","Batch1_PhenoPAM50_processed.tsv"),header = TRUE,sep = "\t", check.names = FALSE)
+phenotype_b1 <- as.data.frame(phenotype_b1)
+phenotype_b1$DeveloppedCancer <- factor(phenotype_b1$DeveloppedCancer, levels = c("0", "1")) 
+# this makes sure that log2 Fold Change of DESeq2 is log2(Developed-Cancer/Non-Cancer)
+
+b2_log2TPM <- as.data.frame(fread(here::here("data","ProcessedRNA","Batch2RNA_log2TPMReads.csv"), check.names = FALSE))
+b2_rawreads <- as.data.frame(fread(here::here("data","ProcessedRNA","Batch2RNA_RawReadCounts_TPMFiltered.csv"), check.names = FALSE))
+phenotype_b2 <- read.delim(here::here("data","ProcessedPhenotype","Batch2_PhenoPAM50_processed.tsv"),header = TRUE,sep = "\t", check.names = FALSE)
+phenotype_b2 <- as.data.frame(phenotype_b2)
+phenotype_b2$DeveloppedCancer <- factor(phenotype_b2$DeveloppedCancer, levels = c("0", "1")) 
+```
+
+# Overlap Batch 1 & 2 RNA Readcounts
+```{r}
+overlap_genes <- intersect(b1_rawreads$gene_id, b2_rawreads$gene_id)
+length(overlap_genes)
+# 44685
+```
+# PCA
+## Prepare log2TPM RNA read count matrix
+```{r}
+rownames(b1_log2TPM) <- b1_log2TPM$gene_id
+b1_log2TPM_matrix <- b1_log2TPM %>%
+  filter(gene_id %in% overlap_genes) %>%
+  dplyr::select(-c(gene_id))
+
+rownames(b2_log2TPM) <- b2_log2TPM$gene_id
+b2_log2TPM_matrix <- b2_log2TPM %>%
+  filter(gene_id %in% overlap_genes) %>%
+  dplyr::select(-c(gene_id))
+```
+
+## PCA on Batch 1 RNAseq - log2TPM counts
+```{r}
+# 1. Transpose so rows = samples (patients), cols = genes
+b1_log2TPM_matrix_t <- t(b1_log2TPM_matrix)
+
+# 2. PCA
+pca_b1 <- prcomp(b1_log2TPM_matrix_t, center = TRUE, scale. = TRUE)
+summary(pca_b1)
+# Scores for batch1 samples
+scores_b1 <- as.data.frame(pca_b1$x)
+scores_b1$ID <- rownames(scores_b1) 
+
+# 3. Merge PCs with phenotype data
+phenotype_b1_pca <- left_join(phenotype_b1, scores_b1, by = "ID")
+dim(phenotype_b1_pca)
+#91 115 (ID + 91 PCs + 23 phenotypes)
+
+write.csv(phenotype_b1_pca, here::here("data","ProcessedPhenotype","Batch1_Pheno_PCs_processed.csv"))
+
+# # 4. PCA plot for batch 1
+plot_scores_b1 <- left_join(scores_b1, data.frame(phenotype_b1[ ,c("ID", "DeveloppedCancer")]), by = "ID")
+
+ggplot(plot_scores_b1, aes(x = PC1, y = PC2, color = DeveloppedCancer)) +
+  geom_point(size = 3) +
+  theme_bw() +
+  labs(title = "PCA of TPM-normalized RNA-seq",
+       x = paste0("PC1 (", round(summary(pca_b1)$importance[2,1]*100, 1), "%)"),
+       y = paste0("PC3 (", round(summary(pca_b1)$importance[2,3]*100, 1), "%)"))
+```
+
+## Project batch2 into same space of Batch 1
+```{r}
+# 1. prcomp object has rotation matrix = loadings
+b2_log2TPM_matrix_t <- t(b2_log2TPM_matrix)
+scores_b2 <- scale(b2_log2TPM_matrix_t, 
+                   center = pca_b1$center, 
+                   scale = pca_b1$scale) %*% pca_b1$rotation
+# 2. Scores for batch 2 samples
+scores_b2 <- as.data.frame(scores_b2)
+scores_b2$ID <- rownames(scores_b2) 
+
+# 3. Merge PCs with phenotype data
+phenotype_b2_pca <- left_join(phenotype_b2, scores_b2, by = "ID")
+dim(phenotype_b2_pca)
+# 51 117 (ID + 91 PCs + 23 phenotypes + Gail + Cuzick)
+
+write.csv(phenotype_b2_pca, here::here("data","ProcessedPhenotype","Batch2_Pheno_PCs_processed.csv"))
+
+# # 4. PCA plot for batch 2
+plot_scores_b2 <- left_join(scores_b2, data.frame(phenotype_b2[ ,c("ID", "DeveloppedCancer")]), by = "ID")
+
+ggplot(plot_scores_b2, aes(x = PC1, y = PC3, color = DeveloppedCancer)) +
+  geom_point(size = 3) +
+  theme_bw() +
+  labs(title = "PCA of Batch 1 Projection on Batch 2",
+       x = paste0("PC1 (", round(summary(pca_b1)$importance[2,1]*100, 1), "%)"),
+       y = paste0("PC3 (", round(summary(pca_b1)$importance[2,3]*100, 1), "%)"))
+```
+
+
+
+## PCA on batch2
+```{r}
+# 1. Transpose so rows = samples (patients), cols = genes
+b2_log2TPM_matrix_t <- t(b2_log2TPM_matrix)
+# 2. PCA
+pca_b2 <- prcomp(b2_log2TPM_matrix_t, center = TRUE, scale. = TRUE)
+summary(pca_b2)
+# Scores for batch1 samples
+scores_b2 <- as.data.frame(pca_b2$x)
+scores_b2$ID <- rownames(scores_b2) 
+
+# 3. Merge PCs with phenotype data
+phenotype_b2_pca_own <- left_join(phenotype_b2, scores_b2, by = "ID")
+dim(phenotype_b2_pca_own)
+# 51 117 (ID + 91 PCs + 23 phenotypes + Gail + Cuzick)
+
+write.csv(phenotype_b2_pca, here::here("data","ProcessedPhenotype","Batch2_Pheno_PCs_processed.csv"))
+
+# # 4. PCA plot for batch 2
+plot_scores_b2 <- left_join(scores_b2, data.frame(phenotype_b2_pca_own[ ,c("ID", "DeveloppedCancer")]), by = "ID")
+
+ggplot(plot_scores_b2, aes(x = PC1, y = PC2, color = DeveloppedCancer)) +
+  geom_point(size = 3) +
+  theme_bw() +
+  labs(title = "PCA of Batch 2",
+       x = paste0("PC1 (", round(summary(pca_b2)$importance[2,1]*100, 1), "%)"),
+       y = paste0("PC2 (", round(summary(pca_b2)$importance[2,2]*100, 1), "%)"))
+```
+
+
+# DESeq2
+## Prepare Raw read count matrix for DESeq2
+```{r}
+rownames(b1_rawreads) <- b1_rawreads$gene_id
+deseq_b1_dat <- b1_rawreads %>%
+  filter(gene_id %in% overlap_genes) %>%
+  dplyr::select(-c(gene_id))
+
+rownames(b2_rawreads) <- b2_rawreads$gene_id
+deseq_b2_dat <- b2_rawreads %>%
+  filter(gene_id %in% overlap_genes) %>%
+  dplyr::select(-c(gene_id))
+```
+
+## Prepare Phenotype data for DESeq2 (include PCs)
+```{r}
+# Convert categorical variables to factors for phenotype data
+factor_vars <- c("FamilyHxBreastCA_yes", "PersonalHxBreastCA_yes",  "menopause_pre",
+                 "race_b", "race_w", "Parous", "DeveloppedCancer")
+num_vars <- c("ageAtBiopsy", "AgeMenstruation_full", "AgeMenopause_full", "BMI_full", paste0("PC", 1:20))
+
+colData_b1 <- phenotype_b1_pca
+# colData_b2 <- phenotype_b2_pca
+colData_b2 <- phenotype_b2_pca_own
+colData_b1[factor_vars] <- lapply(colData_b1[factor_vars], factor)
+colData_b2[factor_vars] <- lapply(colData_b2[factor_vars], factor)
+
+colData_b1[num_vars] <- lapply(colData_b1[num_vars], function(x) as.numeric(scale(x)))
+colData_b2[num_vars] <- lapply(colData_b2[num_vars], function(x) as.numeric(scale(x)))
+
+```
+
+## DESeq2 on Batch 1 with Top 10 PCs
+It takes about 15 minutes to run, here we save RDS for convenience
+```{r}
+# dds1_pca <- DESeqDataSetFromMatrix(countData = deseq_b1_dat,
+#                                colData = colData_b1,
+#                                design = ~ ageAtBiopsy + AgeMenstruation_full + AgeMenopause_full + BMI_full +
+#                                  menopause_pre + race_b + Parous + FamilyHxBreastCA_yes + PersonalHxBreastCA_yes+
+#                                  PC1 + PC2 + PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 +
+#                                  PC11 + PC12 + PC13 + PC14 + PC15 +
+#                                  # PC16 + PC17 + PC18 + PC19 + PC20+
+#                                  DeveloppedCancer)
+# 
+# dds1_pca <- DESeq(dds1_pca)
+# res1_pca <- results(dds1_pca)
+# res1_pca <- res1_pca[order(res1_pca$pvalue), ]
+# saveRDS(res1_pca, here::here("results","DESeq2_results","Batch1_15PCA_DESeq2.rds"))
+
+res1_pca <- readRDS(here::here("results","DESeq2_results","Batch1_10PCA_DESeq2.rds"))
+# res1_pca <- readRDS( here::here("results","DESeq2_results","Batch1_PCA_DESeq2.rds"))
+# res1_pca <- readRDS( here::here("results","DESeq2_results","Batch1_15PCA_DESeq2.rds"))
+```
+
+### Result DE genes
+```{r}
+# sig_genes <- subset(res1_pca, pvalue < 0.001 & abs(log2FoldChange) > 0.5)
+# sig_genes <- subset(res1_pca, pvalue < 0.001 )
+# sig_genes <- subset(res1_pca, pvalue < 0.05)
+
+sig_genes <- subset(res1_pca, padj < 0.05 & abs(log2FoldChange) > 0.5)
+# sig_genes <- subset(res1_pca, padj < 0.05)
+
+length(sig_genes$pvalue) 
+# sum(is.na(res1_pca$pvalue)) 
+
+sum(sig_genes$log2FoldChange > 0, na.rm = TRUE)
+# 111 up
+sum(sig_genes$log2FoldChange < 0, na.rm = TRUE)
+# 73 down
+
+sig_genes_b1 <- as.data.frame(sig_genes)%>%
+  mutate(gene_id = rownames(sig_genes)) %>% 
+  arrange(padj) %>% 
+  dplyr::select(c(gene_id,pvalue,log2FoldChange,stat))
+
+write_tsv(sig_genes_b1,here::here("results","DESeq2_results","Batch1_10PCslogTPM_184DEG.tsv"))
+```
+
+### Volcano plot for Batch 1 DEGenes
+```{r}
+res1_pca$log2FoldChange <- as.numeric(res1_pca$log2FoldChange)
+res1_pca$pvalue <- as.numeric(res1_pca$pvalue)
+
+# Define significance threshold
+thre <- 0.05
+FCthre <- 0.5
+# res1_pca$Significance <- ifelse(res1_pca$pvalue < thre & res1_pca$log2FoldChange > FCthre, "Up",
+#                             ifelse(res1_pca$pvalue < thre & res1_pca$log2FoldChange < -FCthre,"Down","Non-significant"))
+
+res1_pca$Significance <- ifelse(res1_pca$padj < thre & res1_pca$log2FoldChange > FCthre, "Up",
+                            ifelse(res1_pca$padj < thre & res1_pca$log2FoldChange < -FCthre,"Down","Non-significant"))
+
+res1_pca$Significance <- factor(res1_pca$Significance, levels = c("Up", "Down", "Non-significant"))
+
+label_size = 12
+title_size = 12
+legend_size =12
+
+ggplot(res1_pca, aes(x = log2FoldChange, y = -log10(pvalue), color = Significance)) +
+  geom_point(data = subset(res1_pca, Significance == "Non-significant"), alpha = 0.6) +
+  geom_point(data = subset(res1_pca, Significance %in% c("Up", "Down")), alpha = 0.6) + # Significant points at top layer
+  scale_color_manual(values = c("Up" = "red", "Down" = "blue", "Non-significant" = "grey")) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(hjust = 1, size = label_size, face = "bold"),  # Rotate x-axis labels and set font size
+    axis.text.y = element_text(size = label_size, face = "bold"),  # Set y-axis label font size and color
+    axis.title.x = element_text(size = title_size, face = "bold"),  # Set x-axis title font size
+    axis.title.y = element_text(size = title_size, face = "bold"),  # Set y-axis title font size
+    legend.text = element_text(size = legend_size),  # Set legend text font size
+    # Adding a color block on the left of the y-axis text to represent ontology
+    axis.ticks.y = element_line(color = "black", linewidth = 0.5),  # Optional: Add ticks for y-axis
+  )+
+  labs(title = "Volcano for Batch 1 Adj. 10 PCs ",
+       x = "Log2 Fold Change",
+       y = "-Log10 p-adj") +
+  theme(legend.position = "top")
+ggsave(here::here("results","Figures","Volcano_Batch1_adjust10PC.png"), width = 5, height = 5)
+
+```
+
+### GC adjust for p-values from Batch 1 DESeq2 results
+```{r}
+# using raw p values
+GC_adjust<-function(dataframe){
+  dataframe = dataframe[!is.na(dataframe$pvalue),]
+  chisq_stats <- qchisq(dataframe$pvalue, df = 1,lower.tail=FALSE)
+  #chisq_stats <- qchisq(1 - dataframe$pvalue, df = 1)
+  GC <- (median(chisq_stats) / qchisq(0.5, df=1))
+  print(GC) # 0.99 --> test statistics are essentially well-calibrated
+  adjusted_cs = chisq_stats/GC
+  dataframe$gc_p =1-pchisq(adjusted_cs,1)
+  return(dataframe)
+}
+
+res1_pca_gc <- GC_adjust(res1_pca)
+# number of significant genes after GC adjustment
+# sig_genes1_gc <- subset(res1_pca_gc, gc_p < 0.001 & abs(log2FoldChange)>0.5 )
+sig_genes1_gc <- subset(res1_pca_gc, gc_p < 0.001 )
+length(sig_genes1_gc$gc_p) 
+# 77
+length(subset(sig_genes1_gc, log2FoldChange > 0)$gc_p)
+# 30
+length(subset(sig_genes1_gc, log2FoldChange < 0)$gc_p)
+# 47
+```
+
+### QQ plot
+```{r}
+label_size <- 12
+
+# before GC adjust
+observed_p <- sort(res1_pca$pvalue, decreasing = FALSE)
+expected_p <- (1:length(observed_p)) / length(observed_p)
+
+ggplot(data.frame(expected = -log10(expected_p), observed = -log10(observed_p)),
+       aes(x = expected, y = observed)) +
+  geom_point() +
+  theme(
+    axis.text.x = element_text(hjust = 1, size = label_size, face = "bold"),
+    axis.text.y = element_text(size = label_size, face = "bold"),
+  ) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "QQ Plot for Batch 1 with 10PCs adjusted", x = "Expected -Log10(p-value)", y = "Observed -Log10(p-value)")
+ggsave(here::here("results","Figures","Batch1_QQplot_rawPval_adjust10PCs.png"), width = 5, height = 5)
+
+# # After GC adjust
+observed_p_gc <- sort(res1_pca_gc$gc_p, decreasing = FALSE)
+expected_p_gc <- (1:length(observed_p_gc)) / length(observed_p_gc)
+ggplot(data.frame(expected = -log10(expected_p_gc), observed = -log10(observed_p_gc)),
+       aes(x = expected, y = observed)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  theme(
+    axis.text.x = element_text(hjust = 1, size = label_size, face = "bold"),
+    axis.text.y = element_text(size = label_size, face = "bold"),
+  ) +
+  labs(title = "QQ Plot for Batch 1(GC Adj)", x = "Expected -Log10(p-value)", y = "Observed -Log10(GC-Adj p-value)")
+ggsave(here::here("results","Figures","Batch1_QQplot_gcPval_adjust10PCs.png"), width = 5, height = 5)
+
+# check histogram
+hist(res1_pca_gc$gc_p, breaks = 50, main = "Histogram of GC-Adjusted p-values", xlab = "GC-Adjusted p-value")
+```
+
+
+## DESeq2 on Batch 2
+It takes about 15 minutes to run, here we save RDS for convenience
+```{r}
+# dds2_pca <- DESeqDataSetFromMatrix(countData = deseq_b2_dat,
+#                                    colData = colData_b2,
+#                                    design = ~ ageAtBiopsy + AgeMenstruation_full + AgeMenopause_full +
+#                                      menopause_pre + BMI_full + race_b + Parous +
+#                                      FamilyHxBreastCA_yes + PersonalHxBreastCA_yes+
+#                                      PC1 + PC2 +
+#                                      PC3 + PC4 + PC5 + PC6 + PC7 + PC8 + PC9 + PC10 +
+#                                      # PC11 + PC12 + PC13 + PC14 + PC15 + 
+#                                      # PC16 + PC17 + PC18 + PC19 + PC20+
+#                                      DeveloppedCancer)
+# 
+# dds2_pca <- DESeq(dds2_pca)
+# res2_pca <- results(dds2_pca)
+# res2_pca <- res2_pca[order(res2_pca$pvalue), ]
+# saveRDS(res2_pca, here::here("results","DESeq2_results","Batch2_Top2PCs_DESeq2.rds"))
+# saveRDS(res2_pca, here::here("results","DESeq2_results","Batch2_10ownPCs_DESeq2.rds"))
+
+# res2_pca <- readRDS( here::here("results","DESeq2_results","Batch2_10ownPCs_DESeq2.rds"))
+res2_pca <- readRDS(here::here("results","DESeq2_results","Batch2_NoPCs_DESeq2.rds"))
+```
+
+### Result DE Genes
+```{r}
+sig_genes2 <- subset(res2_pca, pvalue < 0.001)
+# sig_genes2 <- subset(res2_pca, pvalue < 0.05)
+# sig_genes2 <- subset(res2_pca, pvalue < 0.001 & abs(log2FoldChange) > 0.5)
+# sig_genes2 <- subset(res2_pca, padj < 0.05 & abs(log2FoldChange) > 0.5)
+length(sig_genes2$pvalue) 
+# 144
+sum(sig_genes2$log2FoldChange > 0, na.rm = TRUE)
+# 98
+sum(sig_genes2$log2FoldChange < 0, na.rm = TRUE)
+# 46
+
+sig_genes_b2 <- as.data.frame(sig_genes2)%>%
+  mutate(gene_id = rownames(sig_genes2)) %>% 
+  arrange(pvalue) %>% 
+  dplyr::select(c(gene_id,pvalue,log2FoldChange, stat))
+```
+
+### GC adjust for p-values from Batch 2
+```{r}
+res2_pca_gc <- GC_adjust(res2_pca)
+# number of significant genes after GC adjustment
+# sig_genes1_gc <- subset(res1_pca_gc, gc_p < 0.001 & abs(log2FoldChange)>0.5 )
+res2_sig_gc <- subset(res2_pca_gc, gc_p < 0.001 )
+length(res2_sig_gc$gc_p) 
+# 151
+
+length(subset(res2_sig_gc, log2FoldChange > 0)$gc_p)
+# 103
+length(subset(res2_sig_gc, log2FoldChange < 0)$gc_p)
+# 48
+```
+
+### Volcano plot for Batch 1 DEGenes
+```{r}
+res2_pca$log2FoldChange <- as.numeric(res2_pca$log2FoldChange)
+res2_pca$pvalue <- as.numeric(res2_pca$pvalue)
+
+# Define significance threshold
+thre <- 0.001
+FCthre <- 0
+res2_pca$Significance <- ifelse(res2_pca$pvalue < thre & res2_pca$log2FoldChange > FCthre, "Up",
+                            ifelse(res2_pca$pvalue < thre & res2_pca$log2FoldChange < -FCthre,"Down","Non-significant"))
+
+# res2_pca$Significance <- ifelse(res2_pca$padj < thre & res2_pca$log2FoldChange > FCthre, "Up",
+#                             ifelse(res2_pca$padj < thre & res2_pca$log2FoldChange < -FCthre,"Down","Non-significant"))
+
+res2_pca$Significance <- factor(res2_pca$Significance, levels = c("Up", "Down", "Non-significant"))
+
+label_size = 12
+title_size = 12
+legend_size =12
+
+ggplot(res2_pca, aes(x = log2FoldChange, y = -log10(pvalue), color = Significance)) +
+  geom_point(data = subset(res2_pca, Significance == "Non-significant"), alpha = 0.6) +
+  geom_point(data = subset(res2_pca, Significance %in% c("Up", "Down")), alpha = 0.6) + # Significant points at top layer
+  scale_color_manual(values = c("Up" = "red", "Down" = "blue", "Non-significant" = "grey")) +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(hjust = 1, size = label_size, face = "bold"),  # Rotate x-axis labels and set font size
+    axis.text.y = element_text(size = label_size, face = "bold"),  # Set y-axis label font size and color
+    axis.title.x = element_text(size = title_size, face = "bold"),  # Set x-axis title font size
+    axis.title.y = element_text(size = title_size, face = "bold"),  # Set y-axis title font size
+    legend.text = element_text(size = legend_size),  # Set legend text font size
+    # Adding a color block on the left of the y-axis text to represent ontology
+    axis.ticks.y = element_line(color = "black", linewidth = 0.5),  # Optional: Add ticks for y-axis
+  )+
+  labs(title = "Volcano for Batch 2 Adj. Phenotypes ",
+       x = "Log2 Fold Change",
+       y = "-Log10 p-value") +
+  theme(legend.position = "top")
+ggsave(here::here("results","Figures","Volcano_batch2_noPCadjust.png"), width = 5, height = 5)
+
+```
+
+
+### QQ plot
+```{r}
+label_size <- 12
+
+# before GC adjust
+observed_p <- sort(res2_pca$pvalue, decreasing = FALSE)
+expected_p <- (1:length(observed_p)) / length(observed_p)
+
+ggplot(data.frame(expected = -log10(expected_p), observed = -log10(observed_p)),
+       aes(x = expected, y = observed)) +
+  geom_point() +
+  theme(
+    axis.text.x = element_text(hjust = 1, size = label_size, face = "bold"),
+    axis.text.y = element_text(size = label_size, face = "bold"),
+  ) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "QQ Plot for Batch 2 without PC adjusted", x = "Expected -Log10(p-value)", y = "Observed -Log10(p-value)")
+
+ggsave(here::here("results","Figures","Batch2_QQplot_rawPval_adjustNoPC.png"), width = 5, height = 5)
+
+# After GC adjust
+observed_p_gc <- sort(res2_pca_gc$gc_p, decreasing = FALSE)
+expected_p_gc <- (1:length(observed_p_gc)) / length(observed_p_gc)
+ggplot(data.frame(expected = -log10(expected_p_gc), observed = -log10(observed_p_gc)),
+       aes(x = expected, y = observed)) +
+  geom_point() +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  theme(
+    axis.text.x = element_text(hjust = 1, size = label_size, face = "bold"),
+    axis.text.y = element_text(size = label_size, face = "bold"),
+  ) +
+  labs(title = "QQ Plot for Batch 2(GC Adj)", x = "Expected -Log10(p-value)", y = "Observed -Log10(GC-Adj p-value)")
+ggsave(here::here("results","Figures","Batch2_QQplot_GCPval_adjustNoPC.png"), width = 5, height = 5)
+```
+
+# Consistency on Batch 1 and Batch 2
+Scatter plot for Log2Fc of Batch 1 against Batch 2 
+```{r}
+library(ggrepel)
+
+batch1 <- as.data.frame(res1_pca)
+batch2 <- as.data.frame(res2_pca)
+
+# Merge Batch 1 and Batch 2 results by Gene ID
+merge_res <- merge(batch1[, c("log2FoldChange","padj")], batch2[, c("log2FoldChange","pvalue")],
+                        by = "row.names", suffixes = c("_B1", "_B2"))
+colnames(merge_res) <- c("Gene", "Log2FC_B1", "padj_B1", "Log2FC_B2", "pvalue_B2")
+
+merge_res <- merge_res %>%
+  mutate(significance = case_when(
+    (padj_B1 < 0.05 & Log2FC_B1 > 0.5) & (Log2FC_B2 > 0.5)  ~ "Same_dir_up",
+    (padj_B1 < 0.05 & Log2FC_B1 < -0.5) & (Log2FC_B2 < -0.5) ~ "Same_dir_down",
+    padj_B1 < 0.05 & abs(Log2FC_B1)> 0.5                  ~ "Sig_B1",
+    pvalue_B2 < 0.001                                      ~ "Sig_B2",
+    TRUE                                                    ~ "Non_Sig"
+  ))
+
+# --- Identify genes significant in both batches and same direction ---
+sig_both <- merge_res %>%
+  filter(padj_B1 < 0.05 & abs(Log2FC_B1) > 0.5 &
+         pvalue_B2 < 0.001 &
+         ((Log2FC_B1 > 0 & Log2FC_B2 > 0) |
+          (Log2FC_B1 < 0 & Log2FC_B2 < 0)))
+
+sig_pvalue_both <- merge_res %>%
+  filter(padj_B1 < 0.05 & abs(Log2FC_B1) > 0.5 &
+         pvalue_B2 < 0.001)
+
+# --- Base data for plot (excluding Non_Sig) ---
+merge_res_plot <- merge_res[merge_res$significance != "Non_Sig",]
+
+# --- Plot ---
+ggplot(merge_res_plot, aes(x = Log2FC_B1, y = Log2FC_B2, color = significance)) +
+  geom_point(alpha = 0.7, size = 2) +
+  # Overlay the Sig_Both_SameDir genes as yellow points (larger)
+  geom_point(data = sig_both, aes(x = Log2FC_B1, y = Log2FC_B2),
+             color = "black", fill = "yellow", size = 3, shape = 21, stroke = 0.8) +
+  scale_color_manual(values = c(
+    "Sig_B1" = "black",
+    "Sig_B2" = "grey",
+    "Same_dir_up" = "red",
+    "Same_dir_down" = "blue"
+  )) +
+  geom_vline(xintercept = 0, linetype = "solid", color = "black", linewidth = 1) +
+  geom_hline(yintercept = 0, linetype = "solid", color = "black", linewidth = 1) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "black") +
+  labs(
+    title = "Log2 Fold Change Consistency: Batch 1 vs Batch 2",
+    subtitle = "Yellow = significant & same direction in both batches",
+    x = "Log2 Fold Change (Batch 1)",
+    y = "Log2 Fold Change (Batch 2)"
+  ) +
+  scale_y_continuous(limits = c(-10, 10)) +
+  theme(legend.position = "right")
+
+ggsave(here::here("results","DESeq2_results","Scatter_Batch1(184)_2(144).png"), width = 9, height = 8)
+
+# save the same FoldChange direction genelist
+genelist <- merge_res[merge_res$significance %in% c("Same_dir_down", "Same_dir_up"),]
+write.csv(genelist, file = here::here("results","Figures","Same_FCdirection_genes.csv"))
+
+```
+
+
+# Overlaps between Sginificant genes from Batch 1 and Batch 2
+
+## PCA on Significant Genes
+### PCA on 184 significant genes from batch 1 - log2TPM counts
+```{r}
+# filter the significant genes
+b1_sig_log2TPM <- b1_log2TPM_matrix %>%
+  filter(rownames(b1_log2TPM_matrix) %in% sig_genes_b1$gene_id)
+
+# 1. Transpose so rows = samples (patients), cols = genes
+b1_log2TPM_matrix_t <- t(b1_sig_log2TPM)
+
+# 2. PCA
+pca_b1 <- prcomp(b1_log2TPM_matrix_t, center = TRUE, scale. = TRUE)
+summary(pca_b1)
+# Scores for batch1 samples
+scores_b1 <- as.data.frame(pca_b1$x)
+scores_b1$ID <- rownames(scores_b1)
+
+# 3. Merge PCs with phenotype data
+phenotype_b1_pca <- left_join(phenotype_b1, scores_b1, by = "ID")
+dim(phenotype_b1_pca)
+
+# 4. Save results
+write.csv(phenotype_b1_pca, here::here("data","ProcessedPhenotype","Batch1_Pheno_sigPCs_processed.csv"))
+```
+
+Plot PCA
+```{r}
+# PCA plot on significant DE genes for batch 1
+plot_scores_b1 <- left_join(scores_b1, data.frame(phenotype_b1[ ,c("ID", "DeveloppedCancer")]), by = "ID")
+
+ggplot(plot_scores_b1, aes(x = PC1, y = PC3, color = DeveloppedCancer)) +
+  geom_point(size = 3) +
+  theme_bw() +
+  labs(title = "PCA of TPM-normalized RNA-seq",
+       x = paste0("PC1 (", round(summary(pca_b1)$importance[2,1]*100, 1), "%)"),
+       y = paste0("PC3 (", round(summary(pca_b1)$importance[2,3]*100, 1), "%)"))
+```
+
+
+### Project batch2 into same space of Batch 1
+```{r}
+b2_sig_log2TPM <- b2_log2TPM_matrix %>%
+  filter(rownames(b2_log2TPM_matrix) %in% sig_genes_b1$gene_id)
+
+# 1. prcomp object has rotation matrix = loadings
+b2_log2TPM_matrix_t <- t(b2_sig_log2TPM)
+scores_b2 <- scale(b2_log2TPM_matrix_t,
+                   center = pca_b1$center,
+                   scale = pca_b1$scale) %*% pca_b1$rotation
+# 2. Scores for batch 2 samples
+scores_b2 <- as.data.frame(scores_b2)
+scores_b2$ID <- rownames(scores_b2)
+
+# 3. Merge PCs with phenotype data
+phenotype_b2_pca <- left_join(phenotype_b2, scores_b2, by = "ID")
+dim(phenotype_b2_pca)
+
+# 4. save the data
+write.csv(phenotype_b2_pca, here::here("data","ProcessedPhenotype","Batch2_Pheno_sigPCs_processed.csv"))
+```
+
+
+```{r}
+# PCA plot for batch 2
+plot_scores_b2 <- left_join(scores_b2, data.frame(phenotype_b2[ ,c("ID", "DeveloppedCancer")]), by = "ID")
+
+ggplot(plot_scores_b2, aes(x = PC1, y = PC3, color = DeveloppedCancer)) +
+  geom_point(size = 3) +
+  theme_bw() +
+  labs(title = "PCA of Batch 1 Projection on Batch 2",
+       x = paste0("PC1 (", round(summary(pca_b1)$importance[2,1]*100, 1), "%)"),
+       y = paste0("PC3 (", round(summary(pca_b1)$importance[2,3]*100, 1), "%)"))
+```
+
+### plot two batches of data points together
+3D
+```{r}
+# batch variable
+plot_scores_b1$batch <- rep("Batch 1",length(plot_scores_b1$PC1))
+plot_scores_b2$batch <- rep("Batch 2", length(plot_scores_b2$PC1))
+
+plot_scores_b1 <- plot_scores_b1[,names(plot_scores_b2)]
+plot_scores <- rbind(plot_scores_b1, plot_scores_b2)
+plot_scores$batch <- factor(plot_scores$batch)
+
+# DevelopppedCancer variable update for legand
+plot_scores <- plot_scores %>%
+  mutate(BreastCancer = factor(if_else(DeveloppedCancer == "1", "Cancer", "NoCancer")))
+
+library(plotly)
+library(htmlwidgets) # save the interactive plot to html
+
+# Compute % variance explained from PCA model
+pc_var <- summary(pca_b1)$importance[2, 1:3] * 100
+
+p <- plot_ly(plot_scores,
+        x = ~PC1,
+        y = ~PC2,
+        z = ~PC3,
+        color = ~BreastCancer,
+        symbol = ~factor(batch),
+        symbols = c("circle", "diamond"),
+        type = "scatter3d",
+        mode = "markers",
+        marker = list(size = 4)) %>%
+  layout(scene = list(
+    xaxis = list(title = paste0("PC1 (", round(pc_var[1], 1), "%)")),
+    yaxis = list(title = paste0("PC2 (", round(pc_var[2], 1), "%)")),
+    zaxis = list(title = paste0("PC3 (", round(pc_var[3], 1), "%)"))
+  ),
+  legend = list(
+    title = list(text = "Legend"),
+    itemsizing = "constant",
+    font = list(size=16),
+    itemwidth = 30
+    ),
+  title = "3D PCA: Batch 1 and Projection on Batch 2")
+
+p
+htmlwidgets::saveWidget(p, here::here("results","Figures","PCA_3D_interactive.html"))
+```
+
+2D, PC1 and PC3
+```{r}
+ggplot(plot_scores, aes(x = PC1, y = PC3, color = BreastCancer, shape = factor(batch))) +
+  geom_point(size = 3) +
+  theme_bw() +
+  labs(title = "PCA of Batch 1 and Projection on Batch 2",
+       x = paste0("PC1 (", round(summary(pca_b1)$importance[2,1]*100, 1), "%)"),
+       y = paste0("PC3 (", round(summary(pca_b1)$importance[2,3]*100, 1), "%)"),
+       color = "Breast Cancer",
+       shape = "Batch")+
+  scale_shape_manual(values = c(16, 17))  #16=circle, 17=triangle
+```
+
+# Prepare Preranked gene list for GSEA 
+## Full Gene Sets of Batch 1 and Batch 2 for GSEA
+```{r}
+batch1 <- as.data.frame(res1_pca)
+batch2 <- as.data.frame(res2_pca)
+
+# Merge Batch 1 and Batch 2 results by Gene ID
+merge_res <- merge(batch1[, c("log2FoldChange","stat")], batch2[, c("log2FoldChange","stat")], 
+                        by = "row.names", suffixes = c("_B1", "_B2"))
+colnames(merge_res) <- c("Gene", "Log2FC_B1", "stat_B1", "Log2FC_B2", "stat_B2")
+
+merge_res <- merge_res %>%
+  mutate(significance = case_when(
+    (stat_B1 > 0) & (stat_B2 > 0) ~ "Both_up",
+    (stat_B1 < 0) & (stat_B2 < 0) ~ "Both_down",
+    TRUE                          ~ "Opposite"
+  ))
+
+table(merge_res$significance)
+write_csv(merge_res, file = here::here("results","DESeq2_results","DESeq2res_Batch1n2_20kgenes.csv"))
+```
+
+## Significant Gene sets for GSEA
+```{r}
+batch1 <- as.data.frame(res1_pca)
+batch2 <- as.data.frame(res2_pca)
+
+# Merge Batch 1 and Batch 2 results by Gene ID
+merge_res <- merge(batch1[, c("log2FoldChange","stat","pvalue")], batch2[, c("log2FoldChange","stat","pvalue")], 
+                        by = "row.names", suffixes = c("_B1", "_B2"))
+colnames(merge_res) <- c("Gene", "Log2FC_B1", "stat_B1", "pval_B1","Log2FC_B2", "stat_B2", "pval_B2")
+
+merge_res <- merge_res %>%
+  mutate(significance = case_when(
+    (pval_B1 < 0.05) & (stat_B1 > 0) & (stat_B2 > 0) ~ "Both_up",
+    (pval_B1 < 0.05) & (stat_B1 < 0) & (stat_B2 < 0) ~ "Both_down",
+    TRUE                          ~ "Others"
+  ))
+
+table(merge_res$significance)
+
+out_rnk <- merge_res %>%
+  filter(significance != "Others")
+table(out_rnk$significance)
+
+write_csv(out_rnk, file = here::here("results","DESeq2_results","DESeq2res_Batch1n2_2kgenes.csv"))
+
+```
+
+```{r}
+
+```
+

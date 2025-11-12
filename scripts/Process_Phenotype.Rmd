@@ -1,0 +1,392 @@
+---
+title: "Process Phenotype"
+author: "Siyang Shen"
+date: "2024-11-04"
+output: html_document
+---
+
+```{r message=FALSE, warning=FALSE}
+setwd(here::here())
+library(tidyverse)
+library(readxl)
+library(here)
+```
+
+## Batch 1
+### Read in raw excel file
+
+```{r}
+pheno_data <- read_excel(here::here("data","RawPhenotype","Sam study DE-ID_Sep15_2021_JY.xlsx"), 
+                         na = "NA",
+    col_types = c("text", "date", "text",
+        #4
+        "text", "numeric", "text", "numeric", 
+        #8
+        "numeric", "text", "numeric", "numeric", 
+        #12
+        "numeric", "text", "numeric", "numeric", 
+        #16
+        "numeric", "text", "text", "numeric", "text", 
+        #21
+        "text", "text", "text", "text", "text",
+        #26
+        "text", "text", "text", "text", "text", 
+        #31
+        "text", "text", "text", "numeric", "numeric", 
+        #36
+        "numeric", "numeric", "numeric", 
+        #39
+        "numeric", "numeric", "numeric", "numeric", 
+        #43
+        "text", "numeric", "numeric", "numeric", 
+        #47
+        "numeric", "text", "date", "text", 
+        #51
+        "numeric", "text", "text", "text", 
+        #55
+        "text", "text", "text", "text", "text", 
+        #60
+        "text", "numeric", "text", "text", 
+        #64
+        "text"))
+
+pheno_data_sub <- pheno_data %>% dplyr::select(c("De-ID", "DeveloppedCancer", "NbBenignBreastBx", "AgeMenstruation", "AgeMenopause", "AgeFirstChild", "Parous", "Nb1RelativeBreastCA", "age", "race", "menopause", "PersonalHxBreastCA", "FamHxBreastOvarianCA", "HRTYear", "weight", "height", "bmi", "FamilyHxBreastCA"))
+
+dim(pheno_data_sub)
+# 93 16
+head(pheno_data_sub)
+
+```
+
+### Data processing: deal with missing values and re-construct variables for analysis
+```{r}
+# Developped Cancer
+table(pheno_data_sub$DeveloppedCancer)
+
+# age at Biopsy
+pheno_data_sub$ageAtBiopsy <- pheno_data_sub$age
+
+# AgeMenstruation
+summary(pheno_data_sub$AgeMenstruation) # 6 NA's
+# Deal with missing values in AgeMenstruation: Dummy values - NA + indicator variable
+pheno_data_sub$AgeMenstruation_NA <- as.numeric(is.na(pheno_data_sub$AgeMenstruation))
+pheno_data_sub$AgeMenstruation_full <- as.numeric(pheno_data_sub$AgeMenstruation)
+# pheno_data_sub$AgeMenstruation_full <- as.numeric(ifelse(is.na(pheno_data_sub$AgeMenstruation), NA, pheno_data_sub$AgeMenstruation))
+
+# AgeMenopause 
+summary(pheno_data_sub$AgeMenopause)# 37 NA's
+# Deal with missing values in AgeMenopause: Dummy values + indicator variable
+pheno_data_sub$AgeMenopause_NA <- as.numeric(is.na(pheno_data_sub$AgeMenopause))
+pheno_data_sub$AgeMenopause_full <- as.numeric(pheno_data_sub$AgeMenopause)
+# pheno_data_sub$AgeMenopause_full <- as.numeric(ifelse(is.na(pheno_data_sub$AgeMenopause), 0, pheno_data_sub$AgeMenopause))
+
+# Menopause
+pheno_data_sub$menopause_post   <- ifelse(pheno_data_sub$menopause == "post", 1, 0)
+pheno_data_sub$menopause_pre    <- ifelse(pheno_data_sub$menopause == "pre", 1, 0)
+pheno_data_sub$menopause_during <- ifelse(pheno_data_sub$menopause == "peri", 1, 0)
+pheno_data_sub$menopause_post[is.na(pheno_data_sub$menopause_post)] <- 0
+pheno_data_sub$menopause_pre[is.na(pheno_data_sub$menopause_pre)] <- 0
+pheno_data_sub$menopause_during[is.na(pheno_data_sub$menopause_during)] <- 0
+
+# race
+table(pheno_data_sub$race)
+pheno_data_sub$race_w <- as.numeric(pheno_data_sub$race == "w")
+table(pheno_data_sub$race_w)
+pheno_data_sub$race_b <- as.numeric(pheno_data_sub$race == "b")
+table(pheno_data_sub$race_b)
+
+# Reconstruct Age at First Child -> AgeFirstChild_30s
+
+# Convert to character and clean up
+pheno_data_sub$AgeFirstChild_chr <- trimws(as.character(pheno_data_sub$AgeFirstChild))
+
+# Safely convert to numeric (returns NA for "no children")
+suppressWarnings({
+  pheno_data_sub$AgeFirstChild_numeric <- as.numeric(pheno_data_sub$AgeFirstChild_chr)
+})
+
+# Dummy for 'no children'
+pheno_data_sub$AgeFirstChild_nochild <- as.numeric(tolower(pheno_data_sub$AgeFirstChild_chr) == "no children")
+pheno_data_sub$AgeFirstChild_nochild[is.na(pheno_data_sub$AgeFirstChild_nochild)] <- 0
+
+# Dummy for age ≤ 30
+pheno_data_sub$AgeFirstChild_less30 <- as.numeric(pheno_data_sub$AgeFirstChild_numeric <= 30)
+pheno_data_sub$AgeFirstChild_less30[is.na(pheno_data_sub$AgeFirstChild_less30)] <- 0
+
+# Dummy for age > 30
+pheno_data_sub$AgeFirstChild_over30 <- as.numeric(pheno_data_sub$AgeFirstChild_numeric > 30)
+pheno_data_sub$AgeFirstChild_over30[is.na(pheno_data_sub$AgeFirstChild_over30)] <- 0
+
+# Dummy for Parous
+pheno_data_sub$Parous_NA <-as.numeric(is.na(pheno_data_sub$Parous))
+# Parous
+pheno_data_sub$Parous[is.na(pheno_data_sub$Parous)] <- 0
+pheno_data_sub$Parous <- as.numeric(pheno_data_sub$Parous)
+
+# Dummy for BMI
+summary(pheno_data_sub$bmi) # 18 NA's
+# Deal with missing values in BMI: Dummy values + indicator variable
+pheno_data_sub$BMI_NA <- as.numeric(is.na(pheno_data_sub$bmi))
+pheno_data_sub$BMI_full <- as.numeric(pheno_data_sub$bmi)
+# pheno_data_sub$BMI_full <- as.numeric(ifelse(is.na(pheno_data_sub$bmi), 0, pheno_data_sub$bmi))
+
+# PersonalHxBreastCA
+table(pheno_data_sub$PersonalHxBreastCA)
+pheno_data_sub$PersonalHxBreastCA_yes <- ifelse(pheno_data_sub$PersonalHxBreastCA == 1, 1, 0)
+pheno_data_sub$PersonalHxBreastCA_no <- ifelse(pheno_data_sub$PersonalHxBreastCA == 0, 1, 0)
+pheno_data_sub$PersonalHxBreastCA_yes[is.na(pheno_data_sub$PersonalHxBreastCA_yes)] <- 0
+pheno_data_sub$PersonalHxBreastCA_no[is.na(pheno_data_sub$PersonalHxBreastCA_no)] <- 0
+
+# FamilyHxBreastCA
+pheno_data_sub$FamilyHxBreastCA_yes <- ifelse(pheno_data_sub$FamilyHxBreastCA == 1, 1, 0)
+pheno_data_sub$FamilyHxBreastCA_no <- ifelse(pheno_data_sub$FamilyHxBreastCA == 0, 1, 0)
+pheno_data_sub$FamilyHxBreastCA_yes[is.na(pheno_data_sub$FamilyHxBreastCA_yes)] <- 0
+pheno_data_sub$FamilyHxBreastCA_no[is.na(pheno_data_sub$FamilyHxBreastCA_no)] <- 0
+
+var_list <- c("De-ID", "DeveloppedCancer", "ageAtBiopsy", "AgeMenstruation_NA", "AgeMenstruation_full", 
+              "AgeMenopause_NA",  "AgeMenopause_full",
+              "menopause_post", "menopause_pre", "menopause_during",
+              "BMI_NA", "BMI_full","race_b", "race_w", "Parous", "Parous_NA",
+              "AgeFirstChild_nochild", "AgeFirstChild_over30", "AgeFirstChild_less30",
+              "PersonalHxBreastCA_yes", "PersonalHxBreastCA_no",
+              "FamilyHxBreastCA_yes", "FamilyHxBreastCA_no")
+# view(pheno_data_sub)
+
+pheno_data_dt <- pheno_data_sub %>% dplyr::select(eval(var_list)) %>% as.data.frame()
+# view(pheno_data_dt)
+
+```
+
+
+# Include PAM50 prediction results
+After processing the RNA-seq and running through PAM50, rerun this scripts to include PAM50 results in modeling
+```{r}
+batch1_pam50 <- read.csv(here::here("results", "PAM50", "batch1_PAM50_predictions.csv"))
+
+# Code PAM50 results
+batch1_pam50$PAM50_LumA <- ifelse(batch1_pam50$PAM50 == "LumA" ,1 ,0)
+batch1_pam50 <- batch1_pam50 %>% dplyr::select(c(PAM50_LumA, Sample))
+
+pheno_data_dt <- merge(pheno_data_dt, batch1_pam50, by.x="De-ID", by.y = "Sample")
+```
+
+
+```{r}
+# Identify numeric columns
+numeric_cols <- sapply(pheno_data_dt[, -1], is.numeric)
+# Apply the transformation only to numeric columns
+pheno_data_dt[, -1][, numeric_cols] <- apply(pheno_data_dt[, -1][, numeric_cols], 2, function(x){
+  x[is.na(x)] <- median(x, na.rm = TRUE)
+  return(x)
+})
+dim((pheno_data_dt))
+head(pheno_data_dt)
+colnames(pheno_data_dt)
+
+colnames(pheno_data_dt)[1] = "ID"
+
+# write the processed Phenotype data into tsv and csv files
+write_tsv(pheno_data_dt, file = here::here("data","ProcessedPhenotype","Batch1_PhenoPAM50_processed.tsv"))
+```
+
+```{r}
+train_pheno_cov <- read_tsv(here::here("data","ProcessedPhenotype","Batch1_PhenoPAM50_processed.tsv"))
+```
+
+
+## Batch 2
+```{r warning=FALSE}
+raw_pheno_batch2 <- readr::read_csv(here::here("data","RawPhenotype","Clinical variables of RNA sequencing-deid_July_22_2025_batch2_50samples_SYmodified.csv"), 
+                                    col_types = c("c", "D", "c", 
+                                          "n","n", "c", "n",
+                                          "c", "c", "c",
+                                          "c", "c", "c",  "c", "c",
+                                          "D","n", "c", "c", "c",
+                                          "n","n","n")
+                                    )
+
+colnames(raw_pheno_batch2) <- c("De-ID", "DOB", "race", "age","bmi", "Bx1Result", 
+                             "AgeMenstruation", "AgeFirstChild", "menopause", "AgeMenopause", "reasonMenopause",
+                             "PersonalHxBreastCA", "FamilyHxBreastCA", "PersonalHxOvarianCA", "FamilyHxOvarianCA",
+                             "LastFollowup", "LastFollowupBMI", "ERneg","ERpos","BCAoutcome", 
+                             "X5yPopRiskCuzek", "X5yAverageRiskGail", "LifeTimeRiskGail")
+View(raw_pheno_batch2)
+raw_pheno_b2 <- raw_pheno_batch2%>% select((-c("Bx1Result","reasonMenopause","ERneg","ERpos","LifeTimeRiskGail"))) 
+
+raw_pheno_b2$DeveloppedCancer <- ifelse(raw_pheno_b2$BCAoutcome == "stay Benign", 0, 1)
+view(raw_pheno_b2)
+
+raw_pheno_b2 <- raw_pheno_b2 %>% select(
+  c("De-ID", "DeveloppedCancer", "AgeMenstruation", "AgeMenopause", "AgeFirstChild", 
+     "age", "race", "menopause", "PersonalHxBreastCA", "FamilyHxBreastCA", "bmi","LastFollowup",
+    "X5yPopRiskCuzek", "X5yAverageRiskGail"))
+
+```
+
+## Overlap of phenotype data of two batches
+```{r}
+colnames(raw_pheno_b2)
+# colnames(pheno_data_b1)
+```
+
+
+### Data processing: impute missing values and re-construct variables for analysis
+```{r}
+# age at Biopsy
+raw_pheno_b2$ageAtBiopsy <- raw_pheno_b2$age
+
+# Deal with missing values in AgeMenstruation: Dummy values + indicator variable
+summary(raw_pheno_b2$AgeMenstruation) # 5 NA's
+raw_pheno_b2$AgeMenstruation_NA <- as.numeric(is.na(raw_pheno_b2$AgeMenstruation))
+mean <- mean(raw_pheno_b2$AgeMenstruation[!is.na(raw_pheno_b2$AgeMenstruation)],)
+raw_pheno_b2$AgeMenstruation_full <- as.numeric(raw_pheno_b2$AgeMenstruation)
+
+# Reconstruct AgeMenopause: Normal Menopause like "50", hysterectomy like "38(hysterectomy) 55 experienced flashes", and oophorectomy like "43(oophorectomy)"
+raw_pheno_b2$AgeMenopause <- ifelse(raw_pheno_b2$AgeMenopause %in% c("Na", "na"), NA, raw_pheno_b2$AgeMenopause)
+sum(is.na(raw_pheno_b2$AgeMenopause)) # 4
+
+# # Count cases with abnormal menopause
+# sum(grepl("\\(.*\\)", raw_pheno_b2$AgeMenopause)) # 20
+# # Count number of normal menopause
+# sum(!grepl("\\(", raw_pheno_b2$AgeMenopause) & !is.na(raw_pheno_b2$AgeMenopause)) # 19
+
+# Extract menopause age regardless of menopause type
+raw_pheno_b2$AgeMenopause <- as.numeric(sub("\\(.*$", "", raw_pheno_b2$AgeMenopause))
+
+# AgeMenopause 
+summary(raw_pheno_b2$AgeMenopause)# 13 NA's
+# Deal with missing values in AgeMenopause: Dummy values + indicator variable
+raw_pheno_b2$AgeMenopause_NA <- as.numeric(is.na(raw_pheno_b2$AgeMenopause))
+raw_pheno_b2$AgeMenopause_full <- raw_pheno_b2$AgeMenopause
+# raw_pheno_b2$AgeMenopause_full <- as.numeric(ifelse(is.na(raw_pheno_b2$AgeMenopause), 0, raw_pheno_b2$AgeMenopause))
+
+# Construct dummy variables 'race_w'-white and 'race_b'-black
+table(raw_pheno_b2$race)
+raw_pheno_b2$race_w <- as.numeric(raw_pheno_b2$race %in% c("w", "W"))
+table(raw_pheno_b2$race_w)
+
+raw_pheno_b2$race_b <- as.numeric(raw_pheno_b2$race == "B")
+table(raw_pheno_b2$race_b)
+
+# Construct dummy variables 'menopause_post' and 'menopause_pre', fill NA with the value that is the majority: Y
+table(raw_pheno_b2$menopause)
+#  N  Y 
+# 13 39 , 7 NAs
+# Menopause
+raw_pheno_b2$menopause_post <- ifelse(raw_pheno_b2$menopause == "Y",1, 0)
+raw_pheno_b2$menopause_pre <- ifelse(raw_pheno_b2$menopause == "N", 1, 0)
+raw_pheno_b2$menopause_during <- ifelse(raw_pheno_b2$menopause == "peri", 1, 0)
+# encode NA to be "0" instead of remaining NA
+raw_pheno_b2$menopause_post[is.na(raw_pheno_b2$menopause_post)] <- 0
+raw_pheno_b2$menopause_pre[is.na(raw_pheno_b2$menopause_pre)] <- 0
+raw_pheno_b2$menopause_during[is.na(raw_pheno_b2$menopause_during)] <- 0
+
+# Reconstruct Age at First Child
+# Convert to character and clean up
+raw_pheno_b2$AgeFirstChild_chr <- trimws(as.character(raw_pheno_b2$AgeFirstChild))
+
+# Safely convert to numeric (returns NA for "no children")
+suppressWarnings({
+  raw_pheno_b2$AgeFirstChild_numeric <- as.numeric(raw_pheno_b2$AgeFirstChild_chr)
+})
+
+# Dummy for 'no children'
+raw_pheno_b2$AgeFirstChild_nochild <- as.numeric(tolower(raw_pheno_b2$AgeFirstChild_chr) == "no children")
+raw_pheno_b2$AgeFirstChild_nochild[is.na(raw_pheno_b2$AgeFirstChild_nochild)] <- 0
+
+# Dummy for age ≤ 30
+raw_pheno_b2$AgeFirstChild_less30 <- as.numeric(raw_pheno_b2$AgeFirstChild_numeric <= 30)
+raw_pheno_b2$AgeFirstChild_less30[is.na(raw_pheno_b2$AgeFirstChild_less30)] <- 0
+
+# Dummy for age > 30
+raw_pheno_b2$AgeFirstChild_over30 <- as.numeric(raw_pheno_b2$AgeFirstChild_numeric > 30)
+raw_pheno_b2$AgeFirstChild_over30[is.na(raw_pheno_b2$AgeFirstChild_over30)] <- 0
+
+# Construct variable Parous from AgeFirstChild
+raw_pheno_b2$Parous_NA <- as.numeric(is.na(raw_pheno_b2$AgeFirstChild))
+raw_pheno_b2$Parous <- as.numeric(raw_pheno_b2$AgeFirstChild_less30 | raw_pheno_b2$AgeFirstChild_over30)
+
+# BMI
+summary(raw_pheno_b2$bmi)
+# Deal with missing values in BMI: Dummy values + indicator variable
+raw_pheno_b2$BMI_NA <- as.numeric(is.na(raw_pheno_b2$bmi))
+raw_pheno_b2$BMI_full <- as.numeric(raw_pheno_b2$bmi)
+# raw_pheno_b2$BMI_full <- as.numeric(ifelse(is.na(raw_pheno_b2$bmi), 0, raw_pheno_b2$bmi))
+
+# PersonalHxBreastCA
+raw_pheno_b2$PersonalHxBreastCA_yes <- ifelse(raw_pheno_b2$PersonalHxBreastCA == 1, 1, 0)
+raw_pheno_b2$PersonalHxBreastCA_no <- ifelse(raw_pheno_b2$PersonalHxBreastCA == 0, 1, 0)
+raw_pheno_b2$PersonalHxBreastCA_yes[is.na(raw_pheno_b2$PersonalHxBreastCA_yes)] <- 0
+raw_pheno_b2$PersonalHxBreastCA_no[is.na(raw_pheno_b2$PersonalHxBreastCA_no)] <- 0
+
+# FamilyHxBreastCA
+raw_pheno_b2$FamilyHxBreastCA_yes <- ifelse(raw_pheno_b2$FamilyHxBreastCA == 1, 1, 0)
+raw_pheno_b2$FamilyHxBreastCA_no <- ifelse(raw_pheno_b2$FamilyHxBreastCA == 0, 1, 0)
+raw_pheno_b2$FamilyHxBreastCA_yes[is.na(raw_pheno_b2$FamilyHxBreastCA_yes)] <- 0
+raw_pheno_b2$FamilyHxBreastCA_no[is.na(raw_pheno_b2$FamilyHxBreastCA_no)] <- 0
+
+view(raw_pheno_b2)
+
+var_list <- c("De-ID", "DeveloppedCancer", "ageAtBiopsy", 
+              "AgeMenstruation_NA", "AgeMenstruation_full",
+              "AgeMenopause_NA", "AgeMenopause_full", 
+              "menopause_post", "menopause_pre", "menopause_during",
+              "BMI_NA", "BMI_full", "race_b", "race_w", "Parous", "Parous_NA",
+              "AgeFirstChild_nochild", "AgeFirstChild_over30", "AgeFirstChild_less30",
+              "PersonalHxBreastCA_yes", "PersonalHxBreastCA_no",
+              "FamilyHxBreastCA_yes", "FamilyHxBreastCA_no", "X5yPopRiskCuzek", "X5yAverageRiskGail")
+
+pheno_b2_dt <- raw_pheno_b2 %>% select(eval(var_list)) %>% as.data.frame()
+view(pheno_b2_dt)
+
+```
+
+# Include PAM50 prediction results
+```{r}
+batch2_pam50 <- read.csv(here::here("results", "PAM50", "batch2_PAM50_predictions.csv"))
+
+# Code PAM50 results
+batch2_pam50$PAM50_LumA <- ifelse(batch2_pam50$PAM50 == "LumA" ,1 ,0)
+batch2_pam50 <- batch2_pam50 %>% select(c(PAM50_LumA, Sample))
+batch2_pam50$Sample <- gsub("\\.", "-", batch2_pam50$Sample)
+view(batch2_pam50)
+
+pheno_b2_dt <- merge(pheno_b2_dt, batch2_pam50, by.x="De-ID", by.y = "Sample")
+view(pheno_b2_dt)
+gail_NAs_ids <- pheno_b2_dt$`De-ID`[is.na(pheno_b2_dt$X5yAverageRiskGail)]
+# store sample IDs with invalid Gail scores
+write.table(gail_NAs_ids, file = here::here("data", "ProcessedPhenotype","Batch2_Gail_NAs.txt"),
+            row.names = FALSE, col.names = FALSE, quote = FALSE)
+```
+
+
+```{r}
+# Identify numeric columns
+numeric_cols <- sapply(pheno_b2_dt[, -1], is.numeric)
+# Apply the transformation only to numeric columns
+pheno_b2_dt[, -1][, numeric_cols] <- apply(pheno_b2_dt[, -1][, numeric_cols], 2, function(x){
+  x[is.na(x)] <- median(x, na.rm = TRUE)
+  return(x)
+})
+dim((pheno_b2_dt))
+head(pheno_b2_dt)
+view(pheno_b2_dt)
+
+colnames(pheno_b2_dt)[1] = "ID"
+# pheno_data_dt$ID <-  unlist(map(pheno_data_dt[, 1], function(x){unlist(str_split(x, "_", 2))[2]}))
+
+# write the processed Phenotype data into tsv and csv files
+write_tsv(pheno_b2_dt, file = here::here("data","ProcessedPhenotype","Batch2_PhenoPAM50_processed.tsv"))
+
+write.table(pheno_b2_dt$ID, file = here::here("data","ProcessedPhenotype","Batch2_sampleID_pheno.txt"),sep = "\t", row.names = FALSE, col.names = FALSE, quote = FALSE)
+
+```
+
+```{r}
+test_pheno_cov <- read_tsv(here::here("data","ProcessedPhenotype","Batch2_PhenoPAM50_processed.tsv"))
+```
+
+```{r}
+
+```
+

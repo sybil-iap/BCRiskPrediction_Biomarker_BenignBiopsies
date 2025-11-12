@@ -1,0 +1,392 @@
+---
+title: "Process Risk Model with PCs"
+output: html_document
+---
+
+## Load library
+```{r, warning=FALSE, message=FALSE}
+library(data.table)
+library(tidyverse)
+library(ranger)
+library(ggfortify)
+
+library(readxl)
+library(readr)
+library(xtable)
+
+library(glmnet)
+library(ROCR);
+library(plotROC)
+library(pROC)
+
+library(survival)
+library(riskRegression)
+
+library(here)
+library(biomaRt)
+
+options(stringsAsFactors=FALSE)
+theme_set(theme_gray(base_size = 24))
+
+source(here::here("scripts","Rfunc.r"))
+```
+
+# Set up covariates
+```{r}
+num_PC <- 3
+path_cov <- c("ageAtBiopsy", "AgeMenstruation_NA", "AgeMenstruation_full", 
+              "AgeMenopause_NA",  "AgeMenopause_full",
+              "menopause_post", "menopause_pre", "menopause_during",
+              "BMI_NA", "BMI_full","race_b", "race_w", "Parous", "Parous_NA",
+              "PersonalHxBreastCA_yes", "PersonalHxBreastCA_no",
+              "FamilyHxBreastCA_yes", "FamilyHxBreastCA_no")
+# path_cov <- c(path_cov, "PAM50_LumA", paste0("PC", 1:num_PC))
+# include PC1 and PC3 for risk modeling
+path_cov <- c(path_cov, "PAM50_LumA", paste0("PC", c(1,3)))
+
+
+Gail_cov <- c("ageAtBiopsy", "AgeMenstruation_NA", "AgeMenstruation_full", 
+              "race_b", "race_w",
+              "AgeFirstChild_nochild","AgeFirstChild_over30", "AgeFirstChild_less30",
+              "FamilyHxBreastCA_yes", "FamilyHxBreastCA_no")
+
+Cuzick_cov <- c("ageAtBiopsy", "AgeMenstruation_NA", "AgeMenstruation_full", 
+                "AgeFirstChild_nochild","AgeFirstChild_over30", "AgeFirstChild_less30",
+              "menopause_post", "menopause_pre", "menopause_during",
+              "BMI_NA", "BMI_full",
+              # "race_b", "race_w", 
+              "PersonalHxBreastCA_yes", "PersonalHxBreastCA_no",
+              "FamilyHxBreastCA_yes", "FamilyHxBreastCA_no")
+
+```
+
+
+# Prepare training dataset using Batch 1 log2 FC based on ACTB
+```{r}
+# PCs from 184 significant genes
+train_dt <- read.csv(here::here("data","ProcessedPhenotype","Batch1_Pheno_sigPCs_processed.csv"))
+
+train_dt <- train_dt[,-1]
+rownames(train_dt) <- train_dt$ID
+# colnames(train_dt)
+# dim(train_dt) 
+
+Gail_train_dt <- as.data.frame(train_dt[,c("ID","DeveloppedCancer",Gail_cov)])
+Cuzick_train_dt <- as.data.frame(train_dt[, c("ID","DeveloppedCancer",Cuzick_cov)])
+
+num_cov <- c("ageAtBiopsy", "AgeMenstruation_full", "AgeMenopause_full", "BMI_full", paste0("PC", 1:num_PC))
+
+# Train scaling, get the scaling parameters
+train_scaled <- scale(train_dt[, num_cov])
+center_ <- attr(train_scaled, "scaled:center")
+scale_  <- attr(train_scaled, "scaled:scale")
+
+# Put scaled values back into train_dt
+train_dt[, num_cov] <- train_scaled
+
+# Gail
+Gail_numcov <- c("ageAtBiopsy", "AgeMenstruation_full")
+Gail_train_scaled <- scale(Gail_train_dt[, Gail_numcov])
+g_center <- attr(Gail_train_scaled, "scaled:center")
+g_scale  <- attr(Gail_train_scaled, "scaled:scale")
+Gail_train_dt[, Gail_numcov] <- Gail_train_scaled
+
+# Cuzick
+Cuzick_numcov <- c("ageAtBiopsy", "AgeMenstruation_full", "BMI_full")
+Cuzick_train_scaled <- scale(Cuzick_train_dt[, Cuzick_numcov])
+c_center <- attr(Cuzick_train_scaled, "scaled:center")
+c_scale  <- attr(Cuzick_train_scaled, "scaled:scale")
+Cuzick_train_dt[, Cuzick_numcov] <- Cuzick_train_scaled
+```
+
+
+# Prepare test dataset based on Batch 2
+```{r}
+# PCs from significant genes
+test_dt <- read.csv(here::here("data","ProcessedPhenotype","Batch2_Pheno_sigPCs_processed.csv"))
+
+rownames(test_dt) <- test_dt$ID
+# colnames(test_dt)
+# dim(test_dt) 
+
+Gail_test_dt <- as.data.frame(test_dt[,c("ID","DeveloppedCancer",Gail_cov)])
+Cuzick_test_dt <- as.data.frame(test_dt[, c("ID","DeveloppedCancer",Cuzick_cov)])
+
+# test set
+test_dt[, num_cov] <- scale(test_dt[, num_cov], center = center_, scale = scale_)
+
+# Gail & Cuzick
+Gail_test_dt[, Gail_numcov] <- scale(Gail_test_dt[, Gail_numcov], center=g_center, scale=g_scale)
+Cuzick_test_dt[, Cuzick_numcov] <- scale(Cuzick_test_dt[, Cuzick_numcov], center=c_center, scale=c_scale)
+
+```
+
+
+## Training and testing model
+
+## GLM-EN model with pheno & gene expression
+```{r}
+####### Train model
+source(here::here("scripts","Rfunc.r"))
+
+set.seed(2022)
+
+table(train_dt$DeveloppedCancer)
+
+fit_train = myENcv(data_train = train_dt, 
+                   var_list_x = path_cov, 
+                   cv_fold = 10, tune_length = 10)
+
+plot_ENcoef(fit = fit_train$best_fit, title = "Coefficients with absolute effect size > 0.2",
+                        pdf_file = here::here("results","Figures","beta_PCmodel.pdf"),
+                        add_legend = FALSE,
+                        beta_abs_cut = 0.2,
+                        width = 10, height = 12)
+
+# coefficients(fit_train$best_fit)
+fit_train$best_alpha
+fit_train$best_lambda
+fit_train$best_auc
+
+## Test 
+pred_test = predict(fit_train$best_fit,
+                    newx = as.matrix(test_dt[,path_cov], nrow = 1),
+                    type = "response" )
+
+risk_score <- data.frame(ID = test_dt[, "ID"],
+                         BC = test_dt[, "DeveloppedCancer"],
+                          LogisticScore = pred_test[, 1])
+```
+
+## Rename Coefficients
+```{r}
+coef <-  fit_train$best_fit %>%  coefficients() %>% as.matrix()
+selected_var <- data.frame(Variable = rownames(coef)[coef != 0],
+                           coefficient = coef[coef != 0]
+                           )
+
+coef <-  coef[-1, ]
+cutoff = 0.2
+coef <- coef %>% as_tibble() %>%
+    dplyr::mutate(Var = names(coef), beta = coef) %>%
+    dplyr::filter( abs(beta) >  cutoff) %>% dplyr::arrange(beta) %>% as.data.frame()
+
+coef$annotation <- coef$Var
+coef$annotation[coef$Var == "race_w"] <- "Race(Is White)"
+coef$annotation[coef$Var == "race_b"] <- "Race(Is Black)"
+coef$annotation[coef$Var == "AgeMenstruation_full"] <- "Menstruation began age"
+coef$annotation[coef$Var == "AgeMenstruation_NA"] <- "Missing Menstruation age"
+coef$annotation[coef$Var == "Parous_NA"] <- "Parous(Is NA)"
+coef$annotation[coef$Var == "menopause_post"] <- "Biopsy After Menopause"
+coef$annotation[coef$Var == "menopause_pre"] <- "No Menopause Yet"
+coef$annotation[coef$Var == "menopause_during"] <- "During Menopause"
+coef$annotation[coef$Var == "BMI_full"] <- "BMI"
+coef$annotation[coef$Var == "BMI_NA"] <- "BMI is NA"
+coef$annotation[coef$Var == "FamilyHxBreastCA_yes"] <- "Family History of BreastCA"
+coef$annotation[coef$Var == "PersonalHxBreastCA_yes"] <- "Has Personal History of BreastCA"
+coef$annotation[coef$Var == "PersonalHxBreastCA_no"] <- "No Personal History of BreastCA"
+
+plot <- coef %>% ggplot(aes(x = annotation, y = beta, fill=beta>0)) +
+  geom_bar(stat = "identity", width = 0.5, show.legend = F) +
+  coord_flip() +
+  scale_x_discrete(limits = (coef$annotation) ) +
+  labs(x = NULL, y = NULL, title = "Top Model Coefficients(>0.2)") +
+  theme(text = element_text(size = 20, face = "bold"),
+    axis.text.x = element_text(angle = -90, vjust = -0.1))
+
+plot
+ggsave(here::here("results","Figures","Annotated_Coefficients.pdf"), width = 10, height = 6)
+
+```
+
+
+## GLM-EN model with Gail covariates
+```{r}
+####### Train model
+set.seed(2022)
+
+table(Gail_train_dt$DeveloppedCancer)
+
+fit_train = myENcv(data_train = Gail_train_dt, 
+                   var_list_x = Gail_cov, 
+                   cv_fold = 10, tune_length = 1, alpha_vec = 0)
+
+plot_ENcoef(fit = fit_train$best_fit, title = "Train Gail EN-model",
+                        pdf_file = here::here("results","Figures","beta_Gail.pdf"),
+                        add_legend = FALSE,
+                        beta_abs_cut = 0,
+                        width = 10, height = 6)
+
+coefficients(fit_train$best_fit)
+fit_train$best_alpha
+fit_train$best_lambda
+fit_train$best_auc
+
+## Test 
+pred_test = predict(fit_train$best_fit,
+                    newx = as.matrix(Gail_test_dt[, Gail_cov], nrow = 1),
+                    type = "response" )
+
+Gail_risk_score <- data.frame(ID = Gail_test_dt[, "ID"],
+                          GailScore = pred_test[, 1])
+risk_score <- merge(risk_score, Gail_risk_score, by = "ID")
+```
+
+
+## GLM-EN model with Cuzick covariates
+```{r}
+####### Train model
+set.seed(2022)
+
+table(Cuzick_train_dt$DeveloppedCancer)
+
+fit_train = myENcv(data_train = Cuzick_train_dt, 
+                   var_list_x = Cuzick_cov, 
+                   cv_fold = 10, tune_length = 1, alpha_vec = 0)
+
+plot_ENcoef(fit = fit_train$best_fit, title = "Training Cuzick",
+                        pdf_file = here::here("results","Figures","beta_Cuzick.pdf"),
+                        add_legend = FALSE,
+                        beta_abs_cut = 0,
+                        width = 10, height = 6)
+
+coefficients(fit_train$best_fit)
+fit_train$best_alpha
+fit_train$best_lambda
+fit_train$best_auc
+
+## Test 
+pred_test = predict(fit_train$best_fit,
+                    newx = as.matrix(Cuzick_test_dt[, Cuzick_cov], nrow = 1),
+                    type = "response" )
+
+Cuzick_risk_score <- data.frame(ID = Cuzick_test_dt[, "ID"],
+                          CuzickScore = pred_test[, 1])
+risk_score <- merge(risk_score, Cuzick_risk_score, by = "ID")
+```
+
+## Boxplot plot -- test on batch 2
+```{r}
+ggplot(risk_score, aes(x = as.factor(BC), y = LogisticScore ) ) +
+  geom_boxplot(aes(fill = as.factor(BC))) +
+    geom_hline(yintercept = c(0.32, 0.34), linetype = "dashed", color = "red", linewidth = 1) +
+    labs(x = "Developped Breast Cancer", y = "Logistic Scores", title = "Transcriptomic Risk Model Testing Results") +
+    scale_y_continuous(breaks = c(0.00, 0.2, 0.35, 0.50, 0.55, 0.7)) +
+  theme(text = element_text(size = 15, face = "bold"),
+        legend.position= "none")
+ggsave(here::here("results","Figures","BoxPlot_riskScores.png"))
+## determine risk groups
+risk_score$risk_group <- cut(
+  risk_score$LogisticScore,
+  breaks = c(-Inf, 0.32, 0.34, Inf),
+  labels = c("Low Risk", "Medium Risk", "High Risk")
+)
+
+# Count total number in each group
+table(risk_score$risk_group)
+
+# Optional: Count per breast cancer status
+table(risk_score$risk_group, risk_score$BC)
+```
+
+
+
+## ROC plot for Model Covariate comparison
+```{r}
+plot_dt = data.frame(D = c(risk_score$BC, risk_score$BC, risk_score$BC), 
+                     M = c(risk_score$GailScore, 
+                     risk_score$CuzickScore, risk_score$LogisticScore),
+                     Method = factor(c(rep("Gail", nrow(risk_score)),  
+                                       rep("Cuzek", nrow(risk_score)),
+                                       rep("Logistic", nrow(risk_score))) )
+                     )
+rocproj_list <- vector(mode = "list", 3)
+cat("Cuzick auc: \n")
+rocproj_list[[1]] <- roc(risk_score$BC, risk_score$CuzickScore) 
+rocproj_list[[1]]$auc
+
+cat("Gail auc: \n")
+rocproj_list[[2]] <- roc(risk_score$BC, risk_score$GailScore)
+rocproj_list[[2]]$auc
+
+cat("Logistic auc: \n")
+rocproj_list[[3]] <- roc(risk_score$BC, risk_score$LogisticScore) 
+rocproj_list[[3]]$auc
+
+
+ggplot(plot_dt, aes(d = D, m = M, size = 1, color = Method)) +
+  geom_roc(labels = FALSE) + style_roc() +
+  annotate("text", x = .55, y = c(.3, 0.2, 0.1), 
+           label = paste(c("Cuzek_AUC =", "Gail_AUC = ", "Logistic_AUC = "), 
+                         round(c(rocproj_list[[1]]$auc, 
+                                 rocproj_list[[2]]$auc, 
+                                 rocproj_list[[3]]$auc), 3)), 
+           hjust = 0, size = 9) +
+           guides(color = guide_legend(title = "Method", override.aes = list(size = 2)),
+                  size = "none") + labs(title = "Three Models on 51 samples") +
+  theme(text = element_text(size = 30, face = "bold"),
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position= "bottom")      
+
+ggsave(here::here("results","Figures","ROC_Compare_51samples.pdf"), width = 10, height = 10)
+```
+
+## ROC: Fair Comparison, exclude NAs in Gail & Cuzick Model
+```{r}
+# add the actual Risk Score for Gail and Cuzick Model
+risk_score_all <- merge(risk_score,
+                    data.frame(ID = test_dt[, "ID"],
+                          test_dt[, c("X5yAverageRiskGail", "X5yPopRiskCuzek")]),
+                    by = "ID")
+
+gail_na_ids <- readLines(here::here("data", "ProcessedPhenotype","Batch2_Gail_NAs.txt"))
+
+risk_score_filtered <- risk_score_all[!(risk_score_all$ID %in% gail_na_ids), ]
+
+plot_dt <- data.frame(
+  D = c(risk_score_filtered$BC, risk_score_filtered$BC, risk_score_filtered$BC),
+  M = c(risk_score_filtered$X5yAverageRiskGail,
+        risk_score_filtered$X5yPopRiskCuzek,
+        risk_score_filtered$LogisticScore),
+  Method = factor(c(rep("Gail", nrow(risk_score_filtered)),
+                    rep("Cuzek", nrow(risk_score_filtered)),
+                    rep("Logistic", nrow(risk_score_filtered))))
+)
+
+rocproj_list <- vector(mode = "list", 3)
+
+cat("Cuzick auc: \n")
+rocproj_list[[1]] <- roc(risk_score_filtered$BC, risk_score_filtered$X5yPopRiskCuzek)
+rocproj_list[[1]]$auc
+
+cat("Gail auc: \n")
+rocproj_list[[2]] <- roc(risk_score_filtered$BC, risk_score_filtered$X5yAverageRiskGail)
+rocproj_list[[2]]$auc
+
+cat("Logistic auc: \n")
+rocproj_list[[3]] <- roc(risk_score_filtered$BC, risk_score_filtered$LogisticScore)
+rocproj_list[[3]]$auc
+
+
+ggplot(plot_dt, aes(d = D, m = M, size = 1, color = Method)) +
+  geom_roc(labels = FALSE) + style_roc() +
+  annotate("text", x = .55, y = c(.3, 0.2, 0.1), 
+           label = paste(c("Cuzek_AUC =", "Gail_AUC = ", "Logistic_AUC = "), 
+                         round(c(rocproj_list[[1]]$auc, 
+                                 rocproj_list[[2]]$auc, 
+                                 rocproj_list[[3]]$auc), 3)), 
+           hjust = 0, size = 9) +
+           guides(color = guide_legend(title = "Method", override.aes = list(size = 2)),
+                  size = "none") + labs(title = "Test on 35 Samples in Batch 2") +
+  theme(text = element_text(size = 30, face = "bold"),
+        axis.text.x = element_text(angle = 30, hjust = 1),
+        legend.position= "bottom")      
+
+ggsave(here::here("results","Figures","ROC_Compare_35Samples.pdf"), width = 10, height = 10)
+```
+
+
+```{r}
+
+```
+

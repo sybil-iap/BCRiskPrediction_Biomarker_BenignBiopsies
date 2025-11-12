@@ -1,0 +1,191 @@
+---
+title: "Process RNAseq"
+author: "Siyang Shen"
+date: "2025-09-25"
+output: html_document
+---
+This scripts takes input of *RNA Raw read counts* that is mapped by STAR and counted by featureCounts, and output:
+1. *Filtered Raw read counts* for DESeq2 analysis;
+2. *TPM read count* for Predictive Modeling;
+3. *log2 TPM read count* for PCA analysis.
+
+```{r warning=FALSE}
+library(DESeq2)
+library(tidyverse)
+library(ggplot2)
+library(dplyr)
+options(stringsAsFactors=FALSE)
+here::here()
+```
+
+# Batch 1
+## Load raw data (phenotype and RNAseq) and clean the `samples names` in datasets
+```{r}
+b1RNA_readcount<- read.delim(here::here("data","RawRNA","batch1_combined_counts.txt"), comment.char = "#", check.names = FALSE)
+phenotype_b1 <- read_tsv(here::here("data","ProcessedPhenotype","Batch1_PhenoPAM50_processed.tsv"))
+phenotype_b1 <- as.data.frame(phenotype_b1)
+
+# Keep gene name, gene length and read count information
+gene_length <- b1RNA_readcount[, c(1,6)]
+
+# Clean column names/sample names (remove file paths and extensions)
+b1RNA_readcount <- b1RNA_readcount[, c(1, 7:ncol(b1RNA_readcount))]
+rownames(b1RNA_readcount) <- b1RNA_readcount$Geneid
+# e.g. turn `../WT_1Aligned.sortedByCoord.out.bam` into `WT_1`
+colnames(b1RNA_readcount) <- gsub(".*/|Aligned\\.sortedByCoord\\.out\\.bam$", "", colnames(b1RNA_readcount))
+# modify sample names to "bng_bx_1" format
+# colnames(b1RNA_readcount)
+# Extract "bng_bx_*" or "mal_bx_*" from each sample column
+modified_sample_names <- sub(".*_(bng_bx_\\w+|mal_bx_\\w+)_.*", "\\1", colnames(b1RNA_readcount)[-1])
+colnames(b1RNA_readcount) <- c(colnames(b1RNA_readcount)[1], modified_sample_names)
+# colnames(b1RNA_readcount)
+
+# combined with valid samples in the phenotype data frame
+id<-intersect(phenotype_b1$ID,colnames(b1RNA_readcount[2:93]))
+#total 91 samples have phenotype and RNA read counts
+rownames(phenotype_b1) <- phenotype_b1$ID
+b1_readcount <- b1RNA_readcount[, id]
+phenotype_b1 <- phenotype_b1[id, ]
+phenotype_b1$DeveloppedCancer <- as.factor(phenotype_b1$DeveloppedCancer)
+```
+*Resulting data frames:*
+b1_readcount: 59251 genes (Geneid) * 91 samples;
+phenotype_b1: 91 sampels * 24 (23 phenotype variables + 1 ID column)
+gene_length: 59251 * 2 (Geneid + Length)
+
+## TPM transfrom
+```{r}
+######### TPM for batch 1 ###################################
+#from https://support.bioconductor.org/p/91218/
+all.equal(rownames(b1_readcount), gene_length$Geneid)
+# [1] TRUE: make sure The rows of `b1_readcount` must correspond exactly to the rows of `gene_length`
+b1_RPBase <- sweep(b1_readcount, 1, gene_length$Length, "/")
+b1_TPM <- t( t(b1_RPBase) * 1e6 / colSums(b1_RPBase) )
+
+# Filter Genes using TPM > 0.1 in at least 20% of all samples
+b1_TPM_0.1<-apply(b1_TPM>0.1,1,sum)/ncol(b1_TPM)
+#deleted genes 4807 total 54444 genes kept
+b1_dele_gene<-gene_length[b1_TPM_0.1<0.2,]
+
+# the TPM count matrix
+b1_TPM_readcount <- as.data.frame(b1_TPM[b1_TPM_0.1>=0.2,])
+b1_TPM_readcount$gene_id <- rownames(b1_TPM_readcount)
+# move "gene_id" column to be the first column (for later log2 FC convertion)
+b1_TPM_readcount <- b1_TPM_readcount %>%
+  select(gene_id, everything())
+# b1_TPM_readcount: 54444 genes * (91 samples + 1 gene_id column) 
+write_csv(b1_TPM_readcount, here::here("data","ProcessedRNA","Batch1RNA_TPMReads.csv"))
+
+# the log2TPM counts
+# find the smallest non-zero TPM
+# > min(b1_TPM_readcount %>% select(-gene_id) %>% unlist() %>% .[.>0])
+# [1] 0.002354023
+b1_log2TPM <- b1_TPM_readcount %>%
+  mutate(across(-gene_id, ~log2(.x + 1e-4)))
+# b1_log2TPM: 54444 genes * (91 samples + 1 gene_id column) 
+write_csv(b1_log2TPM, here::here("data","ProcessedRNA","Batch1RNA_log2TPMReads.csv"))
+
+# the Filtered Raw Read count
+b1_readcount_tpmFilter <- b1_readcount[b1_TPM_0.1>=0.2,]
+b1_readcount_tpmFilter$gene_id <- rownames(b1_readcount_tpmFilter)
+# move "gene_id" column to be the first column (for later log2 FC convertion)
+b1_readcount_tpmFilter <- b1_readcount_tpmFilter %>%
+  select(gene_id, everything())
+# 54444 genes
+# b1_readcount_tpmFilter: 54444 genes * (91 samples + 1 gene_id column) 
+write_csv(b1_readcount_tpmFilter, here::here("data","ProcessedRNA","Batch1RNA_RawReadCounts_TPMFiltered.csv"))
+```
+
+# Batch 2
+Similar process
+## Load raw data (phenotype and RNAseq) and clean the `samples names` in datasets
+```{r}
+# --------------------- Batch 2 --------------------------------
+######### load batch 2 raw data ################################
+b2RNA_readcount<- read.delim(here::here("data","RawRNA","batch2_combined_counts.txt"), comment.char = "#", check.names = FALSE)
+phenotype_b2 <- read_tsv(here::here("data","ProcessedPhenotype","Batch2_PhenoPAM50_processed.tsv"))
+phenotype_b2 <- as.data.frame(phenotype_b2)
+
+# Keep gene name, gene length and read count information
+gene_length <- b2RNA_readcount[, c(1,6)]
+
+# Keep only gene name and count columns in the raw read counts table
+b2RNA_readcount <- b2RNA_readcount[, c(1, 7:ncol(b2RNA_readcount))]
+rownames(b2RNA_readcount) <- b2RNA_readcount$Geneid
+# clean colnames
+colnames(b2RNA_readcount) <- gsub(".*/|\\.Aligned\\.sortedByCoord\\.out\\.bam$", "", colnames(b2RNA_readcount))
+## modify sample names to "SAM_1" format
+colnames(b2RNA_readcount)
+## map sample names
+# Load the mapping table
+map_df <- read.delim(here::here("data","RawRNA","batch2_filenames_SampleIDs.txt"), sep = "\t", header = TRUE)
+# Extract the relevant mapping from 'Index Name' + 'Library ID'  'Description'
+map_df$FullID <- paste0(sub("SM_*","",map_df$Index.Name), "_", map_df$Library.ID)
+map_df$SAM <- sub(".*: ", "", map_df$Description)
+# Remove rows where mapping isn't present
+map_df <- map_df[!is.na(map_df$SAM), ]
+# Get current column names of the count matrix (excluding "Geneid")
+orig_cols <- colnames(b2RNA_readcount)[-1]
+rename_cols <- map_df$SAM[match(orig_cols, map_df$FullID)]
+# Apply the new names
+colnames(b2RNA_readcount)[-1] <- rename_cols
+
+#total 51 samples have phenotype and RNA read counts
+id<-intersect(phenotype_b2$ID,colnames(b2RNA_readcount[2:53]))
+rownames(phenotype_b2) <- phenotype_b2$ID
+rownames(b2RNA_readcount) <- b2RNA_readcount$Geneid
+b2_readcount <- b2RNA_readcount[, id]
+phenotype_b2 <- phenotype_b2[id, ]
+phenotype_b2$DeveloppedCancer <- as.factor(phenotype_b2$DeveloppedCancer)
+```
+
+## TPM transfrom
+```{r}
+######### TPM for batch 2 ###################################
+#from https://support.bioconductor.org/p/91218/
+all.equal(rownames(b2_readcount), gene_length$Geneid)
+# [1] TRUE: make sure The rows of `b2_readcount` must correspond exactly to the rows of `gene_length`
+b2_RPBase <- sweep(b2_readcount, 1, gene_length$Length, "/")
+b2_TPM <- t( t(b2_RPBase) * 1e6 / colSums(b2_RPBase) )
+
+# Filter Genes using TPM > 0.1 in at least 20% of all samples
+b2_TPM_0.1<-apply(b2_TPM>0.1,1,sum)/ncol(b2_TPM)
+#deleted genes 14271 total 44980 genes kept
+b2_dele_gene<-gene_length[b2_TPM_0.1<0.2,]
+
+# the TPM count matrix
+b2_TPM_readcount <- as.data.frame(b2_TPM[b2_TPM_0.1>=0.2,])
+b2_TPM_readcount$gene_id <- rownames(b2_TPM_readcount)
+# move "gene_id" column to be the first column (for later log2 FC convertion)
+b2_TPM_readcount <- b2_TPM_readcount %>%
+  select(gene_id, everything())
+# b2_TPM_readcount: 44980 genes * (51 samples + 1 gene_id column) 
+write_csv(b2_TPM_readcount, here::here("data","ProcessedRNA","Batch2RNA_TPMReads.csv"))
+
+# the log2TPM counts
+# find the smallest non-zero TPM
+# > min(b2_TPM_readcount %>% select(-gene_id) %>% unlist() %>% .[.>0])
+# [1] 0.00372971
+b2_log2TPM <- b2_TPM_readcount %>%
+  mutate(across(-gene_id, ~log2(.x + 1e-4)))
+# b2_log2TPM: 44980 genes * (51 samples + 1 gene_id column) 
+write_csv(b2_log2TPM, here::here("data","ProcessedRNA","Batch2RNA_log2TPMReads.csv"))
+
+# the Filtered Raw Read count
+b2_readcount_tpmFilter <- b2_readcount[b2_TPM_0.1>=0.2,]
+b2_readcount_tpmFilter$gene_id <- rownames(b2_readcount_tpmFilter)
+# move "gene_id" column to be the first column (for later log2 FC convertion)
+b2_readcount_tpmFilter <- b2_readcount_tpmFilter %>%
+  select(gene_id, everything())
+# 44980 genes
+# b2_readcount_tpmFilter: 44980 genes * (51 samples + 1 gene_id column) 
+write_csv(b2_readcount_tpmFilter, here::here("data","ProcessedRNA","Batch2RNA_RawReadCounts_TPMFiltered.csv"))
+```
+
+
+
+```{r}
+
+```
+
+

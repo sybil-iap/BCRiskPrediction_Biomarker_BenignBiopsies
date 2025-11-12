@@ -1,0 +1,60 @@
+SampleID,DOB,Race(B for Black?,age at Bx1,BMI at Bx1,Bx1Result,AgeMenstruation,Age at first child,menopause(Y/N),Age at menopause,Reason of menopause,"Personal history of Breast cancer(0 FOR NO, 1 FOR YES)","1stDegreeRelativeBreastCA(0 FOR NO, 1 FOR YEST)","PersonalHxOvarianCA(0 FOR NO, 1 FOR YEST)","FamHxOvarianCA(0 FOR NO, 1 FOR YEST)",LastFollowup,lastFollowupBMI,ERneg,ERpos,BREASToutcome at follow up,Tyrer-Cuzick (v8) risk at age of first biopsy,Gail 5-year breast cancer risk at age of first biopsy,Gail Lifetime breast cancer risk at age of first biopsy
+SAM-1,5/9/1941,B,73,36,Benign Brease tissue,13,NA,Y,50,,0,0,0,0,3/10/2025,36.9,0,0,stay Benign,3.6,1.8,4.2
+SAM-2,2/5/1957,B,58,53.9,fiBroadenoma,11,NA,Y,45,hysterectomy,0,0,0,0,4/28/2025,39.7,0,0,stay Benign,14,1.4,7.3
+SAM-3,11/2/1973,B,42,21.9,fiBroadenoma,13,No children,Y,48,,0,0,0,0,12/31/2024,26.4,0,0,stay Benign,14.9,0.8,9.6
+SAM-4,11/15/1976,B,38,28.6,fiBroadenoma(A),12,No children,N,menses at last follow up,,0,0,0,0,3/18/2025,29.1,0,0,stay Benign,20.3,0.5,9.9
+SAM-5,1/18/1965,B,50,35.3,papilloma,11,NA,Y,48,,0,0,0,0,3/7/2025,30.5,0,0,stay Benign,17,1.1,8.6
+SAM-6,7/23/1957,B,57,27.9,fiBroadenoma,10,NA,Y,41,,0,1,0,0,4/9/2025,21.2,0,0,stay Benign,13.1,1.4,7.5
+SAM-7,4/21/1963,B,51,30.2,pappilloma,13,NA,Y,48,,0,0,0,0,11/4/2024,29.3,0,0,stay Benign,17,1.2,8.5
+SAM-8,11/11/1949,W,65,26.5,cysts with microcalcifications,13,NA,Y,45,,0,0,0,0,12/17/2024,20.3,0,0,stay Benign,5,1.5,5.4
+SAM-9,9/26/1957,B,57,30.2,Benign tissue,14,NA,Y,50,,0,0,0,0,4/16/2021,28.1,0,0,stay Benign,8,1.1,5.8
+SAM-10,9/18/1970,B,44,24.2,fiBroadenoma,16,NA,N,menses at last follow up,,0,1,0,0,10/17/2024,26.2,0,0,stay Benign,17.4,0.7,7.3
+SAM-11,8/23/1974,B,40,38.8,Benign Breast tissue,11,33,N,menses at last follow up,,0,0,0,0,12/3/2024,35.2,0,0,stay Benign,11.6,0.6,9.8
+SAM-12,10/16/1930,W,84,27.5,apocrine cysts,13,NA,Y,50,,0,1,0,0,6/18/2021,24.1,0,0,stay Benign,0.4,1.2,1.3
+SAM-13,10/16/1966,W,48,26.3,fiBroadenoma,16,NA,N,,,0,1,0,0,4/14/2025,27.7,0,0,stay Benign,15.4,0.8,7.3
+SAM-14,1/19/1975,B,40,36.7,Benign with fat necrosis,11,NA,N,48,hysterectomy,0,1,0,0,4/30/2025,38.8,0,0,stay Benign,11.4,0.6,9.8
+SAM-15,8/14/1947,W,67,32,apocrine cysts,11,NA,Y,50,,0,0,0,0,10/14/2024,30.5,0,0,stay Benign,5.6,1.6,5.4
+SAM-16,10/11/1949,B,62,30.7,adenosis,14,NA,Y,38,hysterectomy,0,1,0,0,1/29/2025,31.5,0,0,stay Benign,9.6,1.2,5
+SAM-17,8/24/1954,W,60,20.1,papilloma,11,29,Y,44,hysterectomy,0,1,0,0,5/2/2023,21,0,0,stay Benign,9.9,1.3,6.9
+SAM-18,2/5/1961,other,54,22.7,fiBroadenoma,14,20,Y,35,hysterectomy,0,1,0,0,8/6/2024,25.3,0,0,stay Benign,6.7,1.1,8.1
+SAM-19,1/13/1974,W,41,29,fiBroadenoma(A),13,33,N,menses at last follow up,,0,1,0,0,6/6/2023,29,0,0,stay Benign,20.3,1.3,16.3
+SAM-20,2/12/1947,B,68,25.5,fiBroadenoma,15,25,Y,42,,0,0,1,0,4/25/2025,23.5,0,0,stay Benign,3.3,1.3,4.1
+SAM-21,12/11/1956,B,58,22,fiBrocystic changes,13,NA,Y,50,,0,1,0,0,12/19/2023,21.8,0,0,stay Benign,13.2,1.4,7.3
+SAM-22,5/8/1967,B,47,25.4,aBscess,13,NA,Y,56,hysterectomy,0,1,0,0,4/17/2025,23.3,0,0,stay Benign,9,1,9.1
+SAM-23,1/24/1957,B,58,20.6,intraductal papilloma,15,41,Y,50,hysterectomy,0,0,0,0,3/3/2023,17.5,0,0,stay Benign,12,1.1,5.6
+SAM-24,2/21/1971,W,44,22.3,fiBrocystic changes,13,NA,N,52,,0,1,0,0,4/8/2025,27.1,0,0,stay Benign,7.9,0.9,8.6
+SAM-25,10/18/1987,A,27,27.4,fiBroadenoma,12,26,N,menses at last follow up,,0,0,0,0,3/10/2025,29.3,0,0,stay Benign,19.2,NA,NA
+SAM-26,6/9/1979,B,29,19,fiBroadenoma,15,23,N,menses at last follow up,,0,1,0,1,7/24/2024,21.6,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),15.1,NA,NA
+SAM-27,1/10/1962,B,49,32.9,fiBroadenoma,12,29,Y,50,hysterectomy,1,1,0,1,9/18/2022,26.1,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),NA,NA,NA
+SAM-28,4/21/1965,w,46,30,fat necrosis,15,37,Y,48,hysterectomy,0,0,0,0,2/3/2025,27.8,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),11.1,1.6,1
+SAM-29,1/29/1956,B,55,33.4,Benign tissue,12,14,Y,51,,0,0,0,0,3/13/2025,31.8,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),6.9,1.5,1.4
+SAM-30,11/17/1951,w,59,37.8,Benign tissue,14,16,Y,52,hysterectomy,1,0,0,0,4/21/2025,35.6,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),NA,NA,NA
+SAM-31,9/3/1962,B,49,39.3,Benign tissue,13,NA,N,NA,,0,0,0,0,10/6/2016,NA,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),NA,NA,NA
+SAM-32,7/11/1948,B,63,28,cystic metaplasia,13,20,Y,40,hysterectomy,0,0,0,0,1/31/2025,28.2,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),5.7,1.6,1.6
+SAM-33,2/15/1964,w,48,30.1,fiBrocystic change,14,27,Y,44,,0,1,0,1,4/8/2025,25.7,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),64.9,,
+SAM-34,11/10/1933,B,78,28.9,atrophic tissue,11,20,Y,49,hysterectomy,1,1,1,1,NA,NA,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),NA,NA,NA
+SAM-35,8/26/1941,w,70,28.2,fat necrosis,13,NA,Y,45,hysterectomy,0,1,0,1, 7/22/2021,33.6,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),4.8,3.8,2.2
+SAM-36,3/24/1956,a,55,24.2,radial sclerosing,NA,27,NA,NA,,1,0,0,0,4/23/2025,23.7,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),NA,NA,NA
+SAM-37,5/19/1942,B,70,28.2,Benign tissue,15,36,NA,NA,,1,0,0,0,1/27/2025,21.6,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),NA,NA,NA
+SAM-38,5/20/1953,W,59,24,nodunal stromal fiBrosis,12,no children,Y,51,,0,1,0,1,1/2/2024,22.82,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),28.3,3.2,16.6
+SAM-39,8/1/1945,B,67,30.9,apocrine metaplasia,12,20,Y,47,hysterectomy,0,0,0,0,4/15/2025,27.9,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),6.2,1.7,1.8
+SAM-40,2/4/1970,B,42,23.3,chronic inflammation,10,24,N,menses at last follow up,,0,0,0,0,5/2/2023,28.6,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),12.9,0.9,0.7
+SAM-41,1/12/1947,w,65,25.8,Benign tissue,11,21,Y,46,hysterectomy,1,0,0,0,10/17/2019,25.3,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),NA,NA,NA
+SAM-42,1/18/1955,B,62,31.3,stromal fiBrosis,12,20,Y,33,hysterectomy,0,0,0,0,1/3/2025,29.6,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),8.3,1.5,1.6
+SAM-43,1/23/1949,B,68,37.5,Benign cyst,12,21,Y,55,,0,1,0,1,10/15/2021,35,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),13.1,1.8,1.8
+SAM-44,12/1/1953,B,64,30,adenosis and stromal fiBrosis,14,27,Y,30,hysterectomy,0,0,0,0,4/28/2025,30.3,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),10.5,1.2,1.7
+SAM-45,2/28/1964,B,54,36.3,fiBroadenoma,10,38,Y,56,hysterectomy,0,1,0,1,3/7/2025,33.9,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),36,3.8,1.4
+SAM-46,5/18/1958,w,59,28.2,usual ductal hyperplasia,13,No children,Y,47,,0,0,0,0,11/10/2020,29,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),10.1,1.8,1.7
+SAM-47,2/3/1969,B,49,27.5,fiBroadenoma,11,No children,Y,50,,0,1,0,1,4/17/2025,31.8,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),10.9,1.1,1.1
+SAM-48,10/18/1974,A,44,20.5,fiBroadenoma,13,31,N,menses at last follow up,,1,0,0,0,3/14/2025,23.8,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),NA,NA,NA
+SAM-49,1/20/1957,B,62,28.8,fiBroadenoma,9,NA,Y,51,hysterectomy,0,1,0,1,3/5/2025,28.2,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),23.7,2.5,1.6
+SAM-50,5/29/1964,w,54,31.8,Benign tissue,12,NA,Y,42,hysterectomy,0,0,0,0,5/1/2025,30.1,0,1,Benign to malignant- ER positive (R ound 1cases have replacaBle Blocks),13.9,1.9,1.4
+SAM-51,10/9/1950,B,64,34.2,fiBrocystic changes,12,NA,Y,42,hysterectomy,0,1,0,0,12/6/2024,33.2,0,0,stay Benign,20.8,3.5,13.7
+SAM-52,4/4/1958,W,57,24.5,fiBroadenoma,13,NA,Y,43,hysterectomy,1,1,1,0,6/29/2021,24,0,0,stay Benign,NA,NA,NA
+SAM-53,3/1/1957,B,58,NA,stromal fiBrosis,9,NA,Y,24,hysterectomy,1,1,0,0,9/28/2023,NA,0,0,stay Benign,NA,NA,NA
+SAM-54,5/21/1967,B,47,24.3,fiBroadenoma,13,NA,Y,45,,0,0,0,0,12/2/2024,32.1,0,0,stay Benign,15.1,1,9
+SAM-55,7/31/1957,w,53,24.1,adenosis and epitheliao hyperplasia,15,no children,Y,49,,0,0,0,0,5/20/2024,24.9,1,0,Benign to malignant- ER negative,13.8,1.3,10.1
+SAM-56,7/28/1957,B,54,31.6,sclerosing adenosis,12,19,Y,50,,1,0,0,0,3/23/2023,26.5,1,0,Benign to malignant- ER negative,NA,NA,NA
+SAM-57,6/23/1967,B,50,30.4,fiBroadenoma,9,No children,Y,39,,0,0,0,0,2/25/2025,28.9,1,0,Benign to malignant- ER negative,16.1,1.1,8.6
+SAM-58,4/15/1959,B,59,25.1,Benign tissue,13,17,Y,46,,0,1,0,0,9/5/2024,25.1,1,0,Benign to malignant- ER negative,8.5,1.4,7.1
+SAM-59,8/3/1951,W,68,27.4,Benign tissue,13,27,Y,54,,1,0,0,0,5/1/2025,27.4,1,0,Benign to malignant- ER negative,NA,NA,NA

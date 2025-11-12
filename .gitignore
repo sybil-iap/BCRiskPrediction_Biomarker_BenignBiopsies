@@ -1,0 +1,25 @@
+# R / RStudio settings and temporary files
+.Rproj.user/
+.Rhistory
+.RData
+.Rapp.history
+.Ruserdata
+.Rprofile
+.Renviron
+
+# renv virtual environment (your local package copies)
+renv/library/
+renv/staging/
+
+# OS system junk
+.DS_Store
+Thumbs.db
+
+# Large data and results you don’t want on GitHub
+data/raw/
+results/**/*.rds
+results/**/*.rda
+results/**/*.pdf
+results/**/*.png
+*.tmp
+*.log
