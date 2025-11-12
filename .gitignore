@@ -17,9 +17,8 @@ Thumbs.db
 
 # Large data and results you don’t want on GitHub
 data/raw/
-results/**/*.rds
-results/**/*.rda
-results/**/*.pdf
-results/**/*.png
-*.tmp
-*.log
+#results/**/*.rds
+#results/**/*.rda
+#results/**/*.pdf
+#results/**/*.png
+*.tmp#*.log
